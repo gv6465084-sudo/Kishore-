@@ -4,11 +4,21 @@
   functions = "netlify/functions"
 
 [build.environment]
-  NODE_VERSION = "20"
+  NODE_VERSION = "22"
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["sharp", "pdfkit"]
+  external_node_modules = [
+    "@google/genai",
+    "sharp",
+    "pdfkit",
+    "express",
+    "serverless-http",
+    "multer",
+    "express-rate-limit",
+    "cheerio",
+    "exifr"
+  ]
 
 [[redirects]]
   from = "/api/*"
