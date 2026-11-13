@@ -2,6 +2,7 @@ import { apiUrl } from '../context/SessionContext';
 import type { AnalysisResult, LanguageCode } from '../types/analysis';
 
 const DIRECT_UPLOAD_THRESHOLD_BYTES = 700 * 1024; // 700 KB
+const SERVERLESS_DIRECT_MAX_BYTES = 3.8 * 1024 * 1024; // Stay under Netlify 6 MB function payload limit
 const CHUNK_SIZE_BYTES = 700 * 1024; // 700 KB per chunk stays safely below proxy body limits
 
 async function parseJsonOrThrow<T>(res: Response, fallbackMessage: string): Promise<T> {
@@ -16,6 +17,37 @@ async function parseJsonOrThrow<T>(res: Response, fallbackMessage: string): Prom
     throw new Error(data?.error || `${fallbackMessage} (HTTP ${res.status}).`);
   }
   return data;
+}
+
+async function compressImageForServerless(file: File): Promise<Blob> {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('Could not decode image in browser.'));
+      el.src = objectUrl;
+    });
+
+    const maxDim = 1600;
+    const scale = Math.min(1, maxDim / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+    const w = Math.max(1, Math.round((img.naturalWidth || 1) * scale));
+    const h = Math.max(1, Math.round((img.naturalHeight || 1) * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    ctx.drawImage(img, 0, 0, w, h);
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.9)
+    );
+    return blob && blob.size > 0 && blob.size < file.size ? blob : file;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 async function uploadSingleChunkWithRetry(
@@ -83,9 +115,27 @@ export async function analyzeMediaFile(params: {
   file: File;
   language: LanguageCode;
   fallbackError: string;
+  serverless?: boolean;
   onUploadProgress?: (label: string | null) => void;
 }): Promise<AnalysisResult> {
-  const { endpoint, file, language, fallbackError, onUploadProgress } = params;
+  const { endpoint, file, language, fallbackError, serverless, onUploadProgress } = params;
+
+  // In stateless serverless deployments (e.g. Netlify Functions), multi-request sticky RAM chunks
+  // are not shared across invocations; upload directly within Netlify's 6 MB payload limit.
+  if (serverless) {
+    let payloadBlob: Blob = file;
+    if (endpoint === '/api/image/analyze' && file.size > SERVERLESS_DIRECT_MAX_BYTES) {
+      payloadBlob = await compressImageForServerless(file);
+    }
+    const formData = new FormData();
+    formData.append('file', payloadBlob, file.name);
+    formData.append('language', language);
+    const res = await fetch(apiUrl(endpoint), {
+      method: 'POST',
+      body: formData,
+    });
+    return await parseJsonOrThrow<AnalysisResult>(res, fallbackError);
+  }
 
   // Small files use single-request multipart upload; larger files use ephemeral chunked upload
   // to stay well under hosted proxy limits and avoid mobile connection drops.
@@ -124,8 +174,9 @@ export async function analyzeMediaFile(params: {
 }
 
 /**
- * Fallback for VideoCheck when slow mobile connections cannot finish uploading the raw video:
- * extracts up to 4 representative JPEG frames directly from the browser's decoded <video> element.
+ * Fallback for VideoCheck when running serverless (without FFmpeg) or when slow mobile
+ * connections cannot upload the raw video: extracts up to 4 representative JPEG frames
+ * directly from the browser's decoded <video> element.
  */
 export async function extractClientVideoFramesAndAnalyze(params: {
   file: File;
@@ -174,6 +225,10 @@ export async function extractClientVideoFramesAndAnalyze(params: {
     for (let i = 0; i < count; i++) {
       const t = Number((((i + 0.5) / count) * usableDuration).toFixed(2));
       await new Promise<void>((resolve) => {
+        if (Math.abs(video.currentTime - t) < 0.01) {
+          resolve();
+          return;
+        }
         const seekTimeout = setTimeout(resolve, 2500);
         video.onseeked = () => {
           clearTimeout(seekTimeout);

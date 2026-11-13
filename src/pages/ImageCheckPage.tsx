@@ -17,7 +17,7 @@ const MAX_BYTES = 20 * 1024 * 1024;
 const ALLOWED_EXT = /\.(jpe?g|png|webp)$/i;
 
 export function ImageCheckPage() {
-  const { t, language, addResult } = useSession();
+  const { t, language, health, addResult } = useSession();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
@@ -71,6 +71,7 @@ export function ImageCheckPage() {
         file,
         language,
         fallbackError: 'Image forensic analysis failed',
+        serverless: Boolean(health?.capabilities.serverless),
         onUploadProgress: (label) => setUploadProgress(label),
       });
 

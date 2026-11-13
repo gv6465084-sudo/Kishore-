@@ -42,15 +42,18 @@ Open `http://localhost:3000`.
 ### 1. Google AI Studio Preview
 - Runs directly with automatic `GEMINI_API_KEY` and `APP_URL` injection on port `3000`.
 
-### 2. Free Frontend Hosting (Vercel Hobby / Cloudflare Pages / Netlify)
-1. Push source code to GitHub.
-2. Import the repository into Vercel (Build: `npm run build`, Output: `dist`).
-3. Set `VITE_API_BASE_URL` only if hosting the backend separately (leave empty for unified server hosting).
+### 2. Free Full-Stack Hosting on Netlify (`netlify.toml` + Netlify Functions)
+1. Push this repository to GitHub (or deploy directly with `npx netlify-cli deploy --prod`).
+2. Netlify automatically reads `netlify.toml`:
+   - **Build command:** `npm run build`
+   - **Publish directory:** `dist`
+   - **Functions directory:** `netlify/functions` (`/api/*` and `/health` automatically route to the serverless API function).
+3. Add `GEMINI_API_KEY` (from Google AI Studio free tier) in **Netlify Site Configuration → Environment variables**. (`GOOGLE_FACT_CHECK_API_KEY` is optional.)
 
-### 3. Free Backend Hosting (Render Free Web Service / Docker)
+### 3. Free Container Backend Hosting (Render Free Web Service / Docker)
 1. Deploy the repository on Render Free Web Service using the included `Dockerfile` (Python 3.11 + `ffmpeg` + OpenCV + Pillow).
 2. Add `GEMINI_API_KEY` (free tier from Google AI Studio) as an environment variable. No Hugging Face or billing keys needed.
-3. CORS automatically allows localhost, `*.vercel.app`, `*.onrender.com`, `*.pages.dev`, `*.netlify.app`, and `*.run.app`.
+3. If hosting frontend and backend separately, set `VITE_API_BASE_URL` on the frontend; CORS automatically allows localhost, `*.vercel.app`, `*.onrender.com`, `*.pages.dev`, `*.netlify.app`, and `*.run.app`.
 
 ### Known Free-Tier Limitations & Quotas
 - **Render Free Web Services** spin down after ~15 minutes of inactivity, causing a 30–60 second cold start on the first request.

@@ -20,7 +20,7 @@ const MAX_BYTES = 20 * 1024 * 1024;
 const ALLOWED_EXT = /\.(mp4|mov|webm|m4v|avi)$/i;
 
 export function VideoCheckPage() {
-  const { t, language, addResult } = useSession();
+  const { t, language, health, addResult } = useSession();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
@@ -80,22 +80,32 @@ export function VideoCheckPage() {
 
     try {
       let data: AnalysisResult;
-      try {
-        data = await analyzeMediaFile({
-          endpoint: '/api/video/analyze',
-          file,
-          language,
-          fallbackError: 'Video verification failed',
-          onUploadProgress: (label) => setUploadProgress(label),
-        });
-      } catch (uploadErr) {
-        // If hosted proxy or slow mobile network drops raw video upload (e.g. TypeError: Failed to fetch),
-        // fall back cleanly to sampling frames directly from the browser's decoded video.
-        if (uploadErr instanceof TypeError) {
-          setUploadProgress(null);
-          data = await extractClientVideoFramesAndAnalyze({ file, language });
-        } else {
-          throw uploadErr;
+      const shouldUseBrowserFrames =
+        Boolean(health?.capabilities.serverless) ||
+        health?.capabilities.ffmpeg_available === false;
+
+      if (shouldUseBrowserFrames) {
+        data = await extractClientVideoFramesAndAnalyze({ file, language });
+      } else {
+        try {
+          data = await analyzeMediaFile({
+            endpoint: '/api/video/analyze',
+            file,
+            language,
+            fallbackError: 'Video verification failed',
+            serverless: Boolean(health?.capabilities.serverless),
+            onUploadProgress: (label) => setUploadProgress(label),
+          });
+        } catch (uploadErr) {
+          const msg = uploadErr instanceof Error ? uploadErr.message : '';
+          // Fall back cleanly to browser-decoded frame sampling if proxy/mobile network drops upload
+          // or if FFmpeg is unavailable on the hosting runtime.
+          if (uploadErr instanceof TypeError || /ffmpeg is not available/i.test(msg)) {
+            setUploadProgress(null);
+            data = await extractClientVideoFramesAndAnalyze({ file, language });
+          } else {
+            throw uploadErr;
+          }
         }
       }
 

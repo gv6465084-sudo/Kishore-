@@ -162,6 +162,7 @@ export interface HealthResponse {
     fact_check_api_configured: boolean;
     local_forensics_available: boolean;
     ffmpeg_available: boolean;
+    serverless?: boolean;
   };
   supported_languages: LanguageCode[];
 }
