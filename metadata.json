@@ -1,0 +1,8 @@
+{
+  "name": "TruthScan AI",
+  "description": "Intelligent Digital Content Verification & AI Forensics Platform — Verify the Content. Reveal the Evidence. Protect the Truth.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
